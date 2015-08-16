@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Get path to ourselve
+SCRIPT="`readlink -e $0`"
+SCRIPTPATH="`dirname $SCRIPT`"
+
+FILE="$SCRIPTPATH/../VERSION"
+MAJOR=`awk '/MAJOR/ {print $3}' $FILE`
+MINOR=`awk '/MINOR/ {print $3}' $FILE`
+echo "LMBENCH: $MAJOR.$MINOR"

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+USERNAME="azuer88"
+
+userdel -rf $USERNAME
+adduser --disabled-password --gecos "" $USERNAME
+adduser $USERNAME sudo
+
+mkdir /home/$USERNAME/.ssh
+
+(cat<<EOF 
+ssh-dss AAAAB3NzaC1kc3MAAACBAPvD/IdVOSaa5+rskLB6DzrvtkRlwo/fLYDvX5QD1l5Iuz5SJyw/mu8dC1O4Zp7QVIr+XeefJjh9RZ2DUo/oLheNAwqc+Gu4BKl9UTbDNyp5CLFCSDekwOdJIYHdNSQtgf7fe+3kdtS2hk3Io+Qo5SPhRRJqIjlNRo9H6Qb1+SYpAAAAFQDh6RQXVU/hp+UO+wvhugcXgK3jOQAAAIBUt4wmvpvsH8pfGdv2ZbGO6B9DTWoo2u4ZFLPYcerSDmbAirCUwYhe5N2tzP8bDDf2BmLdZVUwqsMMZ1pzCtYhzuez2e1u4SlYs7dxYaJDcG0cAR6XRVXG1lrsfb+j2uVx4xdfOkGMBNkw4iFLrSKhqlbBgLuus2kJA0aTlZDoCQAAAIA9xLLm7T3PjjOx6rpGlYuMkx0hIBZ49sNWC0aClZW9c+7U3tFym5JJ1VKkSCUxwx44gr8zo62x1SF0GgRnnaaXOKkfWaIuVHEitAjslle3s5epDLgUNzumN8o0LEaR+rmvh4N1IxLWy0N9mQqryggIPauc35Nsd3+ColzzVhiZ2w==
+EOF
+) > /home/$USERNAME/.ssh/authorized_keys
+(
+cat<<EOF
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz4kJbl/bx14Z3YbQSdiZRG6iPanJgfByMmEmDkGANscWDiDorQRsG1hvcG1DZAzvsMfkrSyIFbyMuNqhg4Oc3DU2mrvq35bzZbHQ5WX1F7Z8De5J5Qi6PDEFIpmeAdlDLK3w19LY7bdmrYLL0VG0TSmYPzuwC5a6WhRAQcrSziZlR7KhkNN08yFUQzm9Bi+VEq8jz6F79Gd1ez1fEdjfOb/32gRoVYcHVpGC8/+SmYGHOqEJ/+C3+q6PYfaAUUa28qk1LQUlD80c1PkCknooueSI3yUIPICGzbGo08HwK8FlaI4a8dnhFpmodzu25FwoYmPqwB6zwDiuuGlrtwMPJ azuer88@azuer88-E1-471
+EOF
+) > /home/$USERNAME/.ssh/authorized_keys2
+chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+chmod 0600 /home/$USERNAME/.ssh/* 
+chmod 0700 /home/$USERNAME/.ssh

@@ -1,0 +1,350 @@
+#!/bin/bash
+
+# bashAutopartition
+# Jason Gerfen <jason.gerfen@gmail.com>
+
+PATH="/bin:/usr/bin:/sbin:/usr/sbin"
+
+FDISK="/sbin/fdisk"
+FILESYSTEM="/sbin/mkfs.reiserfs -q"
+MOUNT="/bin/mount"
+MKDIR="/bin/mkdir"
+TAR="/bin/tar"
+SWAPFS="/sbin/mkswap"
+SWAPON="/sbin/swapon"
+
+COMMAND="/sbin/fdisk -l"
+MOUNTPOINT="/mnt"
+
+# If different block devices exist enter them here
+DISKS=( /dev/sda /dev/hda /dev/hde )
+
+# If you have a different partition scheme enter it here
+# and add it to the list of menu options available, as a
+# new optional argument, as well as the help menu
+SCHEMES=( ./schemes/fdisk.default ./schemes/fdisk.extended ./schemes/fdisk.logical )
+
+DRIVES=()
+FIXED=()
+
+CheckOpts()
+{
+ if [ -n "$ARG" ] ; then
+  case "$ARG" in
+   default ) echo "Standard partition scheme chosen" && SCHEME="${SCHEMES[0]}" && return ;;
+   extended ) echo "Extended partition scheme chosen" && SCHEME="${SCHEMES[1]}" && return ;;
+   logical ) echo "Logical extended partition scheme chosen" && SCHEME="${SCHEMES[2]}" && return ;;
+   * ) return ;;
+  esac
+ fi
+return
+}
+
+ShowMenu()
+{
+ echo "Choose partition scheme..."
+ echo ">> 1 - Standard (default)"
+ echo ">> 2 - Extended"
+ echo ">> 3 - Logical extended"
+ echo ">> 4 - Scheme help"
+ echo ">> 5 - About"
+ echo ">> 6 - Quit"
+ echo "Enter your selection:"
+ read DATA
+ while [ $DATA ] ; do
+  case "$DATA" in
+   1 ) echo "Standard partition scheme chosen" && SCHEME="${SCHEMES[0]}" && return ;;
+   2 ) echo "Extended partition scheme chosen" && SCHEME="${SCHEMES[1]}" && return ;;
+   3 ) echo "Logical extended partition scheme chosen" && SCHEME="${SCHEMES[2]}" && return ;;
+   4 ) echo "Current Partition schemes available:" && ShowSchemes && return ;;
+   5 ) ShowAbout ;;
+   6 ) exit 0 ;;
+   * ) ShowMenu ;;
+  esac
+ done
+return
+}
+
+ShowSchemes()
+{
+ echo "Standard (default) partition scheme:"
+ echo "Primary (bootable) [/:ALL] | Swap [/swap:1GB]"
+ echo
+ echo "Extended partition scheme:"
+ echo "Primary (bootable) [/:30GB] | Swap [/swap:1GB] | Primary [/home:ALL]"
+ echo
+ echo "Logical extended partition scheme:"
+ echo "Primary (bootable) [/boot:128MB]"
+ echo " -Extended [ALL]"
+ echo "  -Logical [/:30GB] | Swap [/swap:1GB] | Extended [/home:ALL]" 
+ echo
+ ShowMenu
+return
+}
+
+ShowAbout()
+{
+ echo "bashAutopartition <jason.gerfen@gmail.com>"
+ echo
+ echo "Usage: ./disks default | extended | logical"
+ echo
+ echo "Currently available partition schemes"
+ echo
+ ShowMenu
+return
+}
+
+CheckSchemes()
+{
+ for data in $(seq 0 $((${#SCHEMES[@]} -1))) ; do
+  if [ -f "${SCHEMES[$data]}" ] ; then
+   continue
+  else
+   echo "Error: Scheme "${SCHEMES[$data]}" missing..."
+  fi
+ done
+return
+}
+
+FindDrives()
+{
+ LISTDRIVES=( $( $COMMAND ) )
+ echo "Looking for drives..."
+ for data in $(seq 0 $((${#LISTDRIVES[@]} - 1))) ; do
+  for disks in $(seq 0 $((${#DISKS[@]} - 1))) ; do
+   if expr "${LISTDRIVES[$data]}" : "^${DISKS[$disks]}" &>/dev/null ; then
+    DRIVES=( "${DRIVES[@]}" "${LISTDRIVES[$data]}" )
+   fi
+  done
+ done
+return
+}
+
+ChkDrive()
+{
+ for data in $(seq 0 $((${#DRIVES[@]} - 1))) ; do
+  FIXED=( "${FIXED[@]}" "${DRIVES[$data]//:/}" )
+ done
+ echo "Found the following partitions:"
+ echo "${FIXED[@]}"
+return
+}
+
+DelFile()
+{
+ if [ -f fdisk.delete ] ; then
+  rm fdisk.delete
+ fi
+return
+}
+
+WrtInput()
+{
+ echo "Generating new partion removal data..."
+ DelFile
+ I=1
+ for data in $(seq 0 $((${#FIXED[@]} -1))) ; do
+  if [ "${FIXED[$data]}" != "${FIXED[0]}" ]  ; then
+   {
+    echo "d"
+    echo "$I"
+   } >> fdisk.delete
+   I=$((I+1))
+  fi
+ done
+ {
+  echo "w"
+  echo "q"
+ } >> fdisk.delete
+return
+}
+
+DelParts()
+{
+ if [ -f fdisk.delete ] ; then
+  echo "Deleting current partitions..."
+  $FDISK ${FIXED[0]} < fdisk.delete &>/dev/null
+ fi
+return
+}
+
+PartDrive()
+{
+ if [ -f $SCHEME ] ; then
+  echo "Creating new partitions..."
+  $FDISK ${FIXED[0]} < $SCHEME &>/dev/null
+ fi
+return
+}
+
+ListParts()
+{
+ echo "Created the following partitions..."
+ $COMMAND
+}
+
+CreateFS()
+{
+ case "$SCHEME" in
+  "${SCHEMES[0]}" ) echo "Creating filesystems based on the '$SCHEME' scheme, please wait..."
+                    $FILESYSTEM ${FIXED[1]} &>/dev/null ;;
+  "${SCHEMES[1]}" ) echo "Creating filesystems based on the '$SCHEME' scheme, please wait..."
+                    $FILESYSTEM ${FIXED[1]} &>/dev/null
+                    $FILESYSTEM ${FIXED[3]} &>/dev/null ;;
+  "${SCHEMES[2]}" ) echo "Creating filesystems based on the '$SCHEME' scheme, please wait..."
+                    $FILESYSTEM ${FIXED[1]} &>/dev/null
+                    $FILESYSTEM ${FIXED[3]} &>/dev/null
+                    $FILESYSTEM ${FIXED[5]} &>/dev/null ;;
+  * ) echo "Error: No scheme matching '$SCHEME' found, could not create filesystems"
+      ShowMenu ;;
+ esac
+return
+}
+
+CreateSwap()
+{
+ case "$SCHEME" in
+  "${SCHEMES[0]}" ) echo "Creating swap based on the '$SCHEME' scheme, please wait..."
+                    $SWAPFS ${FIXED[2]} &/dev/null
+                    $SWAPON ${FIXED[2]} &>/dev/null ;;
+  "${SCHEMES[1]}" ) echo "Creating swap based on the '$SCHEME' scheme, please wait..."
+                    $SWAPFS ${FIXED[2]} &>/dev/null
+                    $SWAPON ${FIXED[2]} &>/dev/null ;;
+  "${SCHEMES[2]}" ) echo "Creating swap based on the '$SCHEME' scheme, please wait..."
+                    $SWAPFS ${FIXED[4]} &>/dev/null
+                    $SWAPON ${FIXED[4]} &>/dev/null ;;
+  * ) echo "Error: No scheme matching '$SCHEME' found, could not create swap"
+      ShowMenu ;;
+ esac
+return
+}
+
+CreateMTPTS()
+{
+ case "$SCHEME" in
+  "${SCHEMES[0]}" ) echo "Creating mount points for the '$SCHEME' scheme, please wait..."
+                    $MKDIR $MOUNTPOINT/ &>/dev/null ;;
+  "${SCHEMES[1]}" ) echo "Creating swap based on the '$SCHEME' scheme, please wait..."
+                    $MKDIR $MOUNTPOINT/ &>/dev/null
+                    $MKDIR $MOUNTPOINT/home &>/dev/null ;;
+  "${SCHEMES[2]}" ) echo "Creating swap based on the '$SCHEME' scheme, please wait..."
+                    $MKDIR $MOUNTPOINT/ &>/dev/null
+		    $MKDIR $MOUNTPOINT/boot &>/dev/null
+                    $MKDIR $MOUNTPOINT/home &>/dev/null ;;
+  * ) echo "Error: No scheme matching '$SCHEME' found, could not create swap"
+      ShowMenu ;;
+ esac
+return
+}
+
+CheckMTPTS()
+{
+ case "$SCHEME" in
+  "${SCHEMES[0]}" ) echo "Checking mount points for the '$SCHEME' scheme, please wait..."
+                    if [ -d $MOUNTPOINT/ ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/'..."
+                     ShowMenu
+                    fi ;;
+  "${SCHEMES[1]}" ) echo "Checking mount points for the '$SCHEME' scheme, please wait..."
+                    if [ -d $MOUNTPOINT/ ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/'..."
+                     ShowMenu
+                    fi
+		    if [ -d $MOUNTPOINT/home ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/home'..."
+                     ShowMenu
+                    fi ;;
+  "${SCHEMES[2]}" ) echo "Checking mount points for the '$SCHEME' scheme, please wait..."
+                    if [ -d $MOUNTPOINT/ ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/'..."
+                     ShowMenu
+                    fi
+                    if [ -d $MOUNTPOINT/boot ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/boot'..."
+                     ShowMenu
+                    fi
+		    if [ -d $MOUNTPOINT/home ] ; then
+                     continue
+                    else
+                     echo "Error: Could not locate '$MOUNTPOINT/home'..."
+                     ShowMenu
+                    fi ;;
+  * ) echo "Error: No scheme matching '$SCHEME' found, could not validate mount points"
+      ShowMenu ;;
+ esac
+return
+}
+
+MountFS()
+{
+ case "$SCHEME" in
+  "${SCHEMES[0]}" ) echo "Mounting filesystems based on the '$SCHEME' scheme, please wait..."
+                    $MOUNT ${FIXED[1]} $MOUNTPOINT/ &>/dev/null ;;
+  "${SCHEMES[1]}" ) echo "Mounting filesystems based on the '$SCHEME' scheme, please wait..."
+                    $MOUNT ${FIXED[1]} $MOUNTPOINT/ &>/dev/null
+                    $MOUNT ${FIXED[3]} $MOUNTPOINT/home &>/dev/null ;;
+  "${SCHEMES[2]}" ) echo "Mounting filesystems based on the '$SCHEME' scheme, please wait..."
+                    $MOUNT ${FIXED[1]} $MOUNTPOINT/boot &>/dev/null
+                    $MOUNT ${FIXED[3]} $MOUNTPOINT/ &>/dev/null
+                    $MOUNT ${FIXED[5]} $MOUNTPOINT/home &>/dev/null ;;
+  * ) echo "Error: No scheme matching '$SCHEME' found, could not create mount points"
+      ShowMenu ;;
+ esac
+return
+}
+
+CleanUp()
+{
+ echo "Cleaning up..."
+ if [ -f fdisk.delete ] ; then
+  rm -f fdisk.delete
+ fi
+ if [ "${#LISTDRIVES[@]}" -gt "0" ] ; then
+  unset LISTDRIVES
+ fi
+ if [ "${#DRIVES[@]}" -gt "0" ] ; then
+  unset DRIVES
+ fi
+ if [ "${#FIXED[@]}" -gt "0" ] ; then
+  unset FIXED
+ fi
+return
+}
+
+if [ $UID = 0 ]
+then
+ if [ ! -z "$1" ] ; then
+  ARG="$1"
+  CheckOpts
+ else
+  ShowMenu
+ fi
+ CheckSchemes
+ FindDrives
+ ChkDrive
+ WrtInput
+ DelParts
+ PartDrive
+ ListParts
+ CleanUp
+ FindDrives
+ ChkDrive
+ CreateFS
+ CreateMTPTS
+ CheckMTPTS
+ CreateSwap
+ MountFS
+ CleanUp
+else
+ echo "Must be super user!"
+fi

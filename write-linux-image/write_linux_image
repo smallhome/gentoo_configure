@@ -1,0 +1,229 @@
+#!/bin/bash 
+# set -e 
+# any error, and this script will exit
+
+MAX_HOME=100 # GiB to reserve for home
+MOUNT_POINT="`pwd`/linux-mate"
+# SOURCE_IMAGE="latest.img"
+SOURCE_IMAGE="linux-image.xz"
+MASTER_IMAGE=""
+SELF=$0
+HDD_DEV=$1
+BOUNDARY=0
+SWAP=0
+
+CHK_OPTS=""
+
+
+
+function calculate_image_size {
+    echo "Calculate size of $1..."
+    if [ $IS_XZIP ]; then
+        target_size=`xz -l ${1} | grep MiB | awk '{print $5}' | sed 's/,//g'`
+        TARGET_MiB_SIZE=${target_size%.*}
+    else
+        target_size=`stat --printf=%s "${1}"`
+        TARGET_MiB_SIZE=`expr $target_size / 1048576`
+    fi
+}
+
+function get_master_image_filename {    
+    local target
+    if [ -e $SOURCE_IMAGE ]; then
+        target=$(readlink -f $SOURCE_IMAGE)
+    else
+        echo "Master image not found -- ${SOURCE_IMAGE}"
+        exit 3
+    fi
+    if [ -s "$target" ]; then
+        echo "Image file is: $target"
+    else
+        echo "Image file not found - $target"
+        exit 3
+    fi
+    MASTER_IMAGE="$target"
+    
+    if file $MASTER_IMAGE | grep -q 'XZ'; then
+        IS_XZIP=true
+    else
+        IS_XZIP=false
+    fi
+}
+
+function check_rights {
+    ROOT_UID=0
+    if [ $UID != $ROOT_UID ]; then
+        echo "This script needs administrator privileges."
+        if [[ -t 1 ]]; then
+            sudo "$SELF" "$HDD_DEV"
+        else
+            exec 1>output_file
+            gksu "$SELF" "$HDD_DEV"
+        fi
+        exit
+    fi
+}
+
+
+function check_target_device {
+    if [ -e $HDD_DEV ]; then
+        echo "Target device: ${HDD_DEV}"
+    else
+        echo "Target device not found - ${HDD_DEV}"
+        exit 4
+    fi
+    
+    if [ -b $HDD_DEV ]; then
+        echo "Target is a block device. so far so good."
+    else
+        echo "Target doesn't seem to be a block device. exiting..."
+        exit 4
+    fi
+
+    if mount | grep ${HDD_DEV} > /dev/null; then
+        echo "Target device is mounted, cannot continue."
+        echo "Please unmount first."
+        exit 6
+    fi
+}
+
+function confirm_destroy_target_device {
+    parted $HDD_DEV unit GiB print
+
+    echo "All data on $HDD_DEV will be lost"
+    read -r -p "Are you sure? [y/N] " response
+    case $response in 
+        [yY][eE][sS]|[yY])
+            ;;
+        *)
+            echo "User aborted."
+            exit 2
+            ;;
+    esac
+}
+
+function get_target_device_size {
+    echo "Getting target device size..."
+    START_STRING="Disk ${HDD_DEV}:"
+    CUT_LENGTH=${#START_STRING}
+    UNIT_STR="GiB"
+    UNIT_LEN=${#UNIT_STR}
+    HDSIZE_STR=`parted $HDD_DEV unit ${UNIT_STR} print | grep "$START_STRING"`
+    LEN=$((${#HDSIZE_STR}-$CUT_LENGTH-$UNIT_LEN))
+    SIZE="${HDSIZE_STR:$CUT_LENGTH:$LEN}"
+    echo "Calc SIZE"
+    if [[ $SIZE == *"."* ]]; then
+       IDX=`expr index ${SIZE} "."`
+       echo "IDX: ${IDX}"
+       SIZE=${SIZE:0:$IDX}
+    fi
+    echo "Calc RESERVE_SIZE"
+    RESERVE_SIZE=`expr $SIZE - 40`
+    STARTING=`expr $SIZE - $MAX_HOME`
+
+    if [[ $STARTING -lt $RESERVE_SIZE ]]; then
+        BOUNDARY=$STARTING
+    else
+        BOUNDARY=$RESERVE_SIZE
+    fi
+    if [[ $BOUNDARY -lt 40 ]]; then
+        BOUNDARY=40
+    fi
+}
+
+function create_partitions_and_copy_image {
+    echo "creating partitions...."
+    
+    get_target_device_size
+    get_master_image_filename
+    echo "target: $MASTER_IMAGE"
+    calculate_image_size "$MASTER_IMAGE"
+
+    echo "BOUNDARY = $BOUNDARY"
+    echo "SIZE = $SIZE"
+    SIZE_MB=`expr $SIZE \* 1024`
+    echo "SIZE_MB = $SIZE_MB"
+    SWAP_MB=`expr $SIZE_MB - 3840`
+    SWAP=`expr $SWAP_MB / 1024`
+    echo "SWAP_MB = $SWAP_MB"
+    START_MB=1
+    END_MB=`expr $TARGET_MiB_SIZE + $START_MB`
+    echo "SWAP_END = $END_MB"
+    BOUNDARY_MB=`expr $BOUNDARY \* 1024 + 1`
+    parted -a optimal -s $HDD_DEV -- unit MiB mklabel msdos \
+        mkpart primary ext4 ${START_MB} ${END_MB} \
+        mkpart extended ${BOUNDARY}GiB 100% \
+        mkpart logical linux-swap ${SWAP}GiB 100% \
+        mkpart logical ext4 ${BOUNDARY}GiB ${SWAP}GiB \
+        set 1 boot on
+
+    mkswap $CHK_OPTS -L swap ${HDD_DEV}5 
+    mkfs.ext4 -L linux-mint ${HDD_DEV}1 
+    mkfs.ext4 $CHK_OPTS -L home-rw ${HDD_DEV}6 
+    echo "checking if ${HDD_DEV}1 is mounted..."
+    if mount | grep ${HDD_DEV}1 > /dev/null; then
+        echo "is mounted, will unmount"
+        umount ${HDD_DEV}1
+    else
+        echo "not mounted, good."
+    fi
+
+    if [ ${IS_XZIP} ]; then
+        echo "Writing XZ master image to ${HDD_DEV}1..."
+        pv "$MASTER_IMAGE" | unxz | dd of=${HDD_DEV}1
+    else
+        echo "Writing master image to ${HDD_DEV}1..."
+        pv "$MASTER_IMAGE" | dd of=${HDD_DEV}1 
+    fi
+
+    echo "mounting ${HDD_DEV}1..."
+    mount ${HDD_DEV}1 "${MOUNT_POINT}"
+
+    echo "installing grub..."
+    /usr/sbin/grub-install ${HDD_DEV} \
+        --boot-directory="${MOUNT_POINT}/boot"
+
+    echo "unmounting ${HDD_DEV}1..."
+    umount ${HDD_DEV}1
+
+    echo "Resizing partition..."
+    parted -a optimal -s $HDD_DEV -- resizepart 1 40GiB
+
+    echo "Resizing filesystem..."
+    e2fsck -f ${HDD_DEV}1
+    resize2fs ${HDD_DEV}1 
+    if [ -z "$CHK_OPTS" ]; then
+        echo "Not checking for badblocks"
+    else
+        echo "checking badblocks..."
+        e2fsck -cvv ${HDD_DEV}1
+    fi
+    e2label ${HDD_DEV}1 linux-mint
+    e2label ${HDD_DEV}6 home-rw
+}
+
+function print_usage_and_exit {
+    PROG=`basename $SELF`
+    echo "usage: ./$PROG <device>"
+    echo "        e.g.: ./$PROG /dev/sdb"
+    echo " WARNING: This will DESTROY all data, be very careful"
+    exit 1
+}
+
+# check that we have at least 1 parameter
+echo $#
+if [[ $# -ne 1 ]]; then
+    print_usage_and_exit
+fi
+
+# check that the first parameter is a device
+check_target_device
+
+# check that we have root privileges
+check_rights
+
+# ask user if okay to destroy data on device
+confirm_destroy_target_device
+
+# do the actual, work
+create_partitions_and_copy_image

@@ -1,0 +1,28 @@
+#!/bin/sh
+# - runtime
+# - nr_threads
+# - test
+# - send_size
+
+## Netperf is a benchmark that can be use to measure various aspect of
+## networking performance. The primary foci are bulk (aka unidirectional)
+## data transfer and request/response performance using either TCP
+## or UDP and the Berkeley Sockets interface.
+
+export PATH=$BENCHMARK_ROOT/netperf/bin:$PATH
+
+[ "${test#*SCTP}" != "$test" ] && modprobe sctp 2>/dev/null
+sleep 1
+
+[ -n "$send_size" ] && test_options="-- -m $send_size"
+
+[ -n "$direct_server_ips" ] && server=$direct_server_ips
+[ -z "$server" ] && server=127.0.0.1
+server=${server%% *}
+
+for i in $(seq $nr_threads)
+do
+	cmd netperf -t $test -c -C -l $runtime $test_options -H $server &
+done
+
+wait

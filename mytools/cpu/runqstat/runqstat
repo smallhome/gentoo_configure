@@ -1,0 +1,209 @@
+#!/usr/bin/python
+#
+# COPYRIGHT: Copyright (c) 2014 Yong Yang.
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+#
+#  (http://www.gnu.org/copyleft/gpl.html)
+#
+# 3-Jul-2015	Yong Yang	Created this.
+
+"""
+A tool that could show tasks information on Linux per-CPU runq
+"""
+
+import sys
+from optparse import OptionParser
+import re
+import subprocess
+import time
+from time import sleep
+
+__version__ = '0.1'
+
+def gen_numa():
+    """Generate NUMA info"""
+    cpunodes = {}
+    numacores = {}
+    out = subprocess.Popen('numactl --hardware | grep cpus', shell=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    errtxt = out.stderr.readline()
+    if errtxt:
+        print errtxt + '\r\n'
+        print "Is numactl installed?\r"
+        exit(1)
+    for line in out.stdout.readlines():
+        arr = line.split()
+        if arr[0] == "node" and arr[2] == "cpus:" and len(arr) > 3:
+            node = arr[1]
+            numacores[node] = arr[3:]
+            for core in arr[3:]:
+                cpunodes[core] = node
+    return numacores, cpunodes
+
+def cpus_init(cpus, numacores):
+    """initialize cpus data with default value"""
+
+    runq = {}
+    node = 0
+    while node < len(numacores):
+        for cpu in numacores[str(node)]:
+            runq[".nr_switches_old"] = -1
+            cpus[int(cpu)] = runq.copy()
+        node += 1
+
+def print_stat(numacores, cpus):
+    """print runq stat data"""
+
+    header_width = len("nr_switches")
+    width = len("CPUXX")
+    node = 0
+    fmtstr1 = '\t%' + str(width) + 's'
+    fmtstr2 = '%' + str(header_width) + 's\t%' + str(width) + 's'
+    while node < len(numacores):
+        header = ('%' + str(header_width) + 's') % ' '
+        header += ('\t%' + str(width) + 's') % ("Node" + str(node))
+        data1 = ''
+        data2 = ''
+        data3 = ''
+        node_sum1 = 0
+        node_sum2 = 0
+        node_sum3 = 0
+        for cpu in numacores[str(node)]:
+            header += ('\t%' + str(width) + 's') % ("CPU" + cpu)
+            runq = cpus[int(cpu)]
+            data1 += fmtstr1 % runq[".nr_running"]
+            data2 += fmtstr1 % runq[".load"]
+            delta = int(runq[".nr_switches"]) - int(runq[".nr_switches_old"])
+            data3 += fmtstr1 % delta
+            node_sum1 += int(runq[".nr_running"])
+            node_sum2 += int(runq[".load"])
+            node_sum3 += delta
+        print header
+        print fmtstr2 % ("nr_running", str(node_sum1) + data1)
+        print fmtstr2 % ("load", str(node_sum2) + data2)
+        print fmtstr2 % ("nr_switches", str(node_sum3) + data3)
+        print '\n'
+        node += 1
+    print '\n'
+
+
+def header_parse(out):
+    """sched_debug header parse"""
+
+    while True:
+        line = out.readline()
+        if re.search("Sched Debug Version:", line):
+            print line
+        if re.search("sched_clock_stable", line):
+            print line
+            break
+
+def sysctl_sched_parse(out):
+    """sysctl_sched parse"""
+
+    print_start = 0
+    while True:
+        line = out.readline()
+        if re.search("sysctl_sched", line):
+            print_start = 1
+        if print_start:
+            print line
+        if print_start and re.search("^\n$", line):
+            print_start = 0
+            break
+
+def runq_parse(out, numacores, cpus):
+    """runq parse"""
+
+    cpu = 0
+    cpu_found = 0
+    for line in out.readlines():
+        if re.search("cpu#", line):
+            cpu_found = 1
+            runq = cpus[cpu]
+            continue
+        if cpu_found:
+            key, val = line.split(':')
+            key = key.strip()
+            val = val.strip('\n')
+            if re.search("\.nr_switches", line):
+                if runq[".nr_switches_old"] != -1:
+                    runq[".nr_switches_old"] = runq[".nr_switches"]
+                else:
+                    runq[".nr_switches_old"] = 0
+                cpu += 1
+                cpu_found = 0
+            runq[key] = val
+
+    print_stat(numacores, cpus)
+
+def runq_stat(seconds):
+    """Main I/O loop"""
+
+    cpus = {}
+    numacores, cpunodes = gen_numa()
+
+    run_once = 1
+
+    try:
+        out = open('/proc/sched_debug', 'r')
+
+        while True:
+            if run_once == 1:
+                cpus_init(cpus, numacores)
+                header_parse(out)
+                sysctl_sched_parse(out)
+                print "CPU runq task numbers for every %d second(s)\n" % seconds
+                run_once = 0
+
+            print time.ctime() + '\n'
+            runq_parse(out, numacores, cpus)
+
+            for _ in range(0, seconds * 10):
+                sleep(.1)
+
+            out.seek(0,0)
+
+    except IOError:
+        print "Error: can't open /proc/sched_debug"
+        print "please make sure kernel is configed with SCHED_DEBUG."
+        return
+
+    out.close()
+
+def main(args):
+    """Parse arguments, call main loop"""
+
+    parser = OptionParser(description=__doc__)
+
+    parser.add_option("-v", "--version", action="store_true",
+                      help="get version")
+    parser.add_option("-t", "--time", default='5',
+                      help="update interval in seconds")
+
+    options = parser.parse_args(args)[0]
+
+    if options.version:
+        print __version__
+        return 0
+
+    try:
+        runq_stat(int(options.time))
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -1,0 +1,16 @@
+reset
+
+set autoscale
+set xlabel "Process number" font "Times-Italic,15"
+set ylabel "Time(microseconds)" font "Times-Italic,15"
+set xtics
+set ytics
+set mxtics 5
+set mytics 5
+set key box
+set mouse
+plot "../LAT_CTX_results/result_16k.txt" using 1:2 with linespoints title "Process size=16kb" lt 4 lw 1 pt 7 lc 5,\
+"../LAT_CTX_results/result_16k.txt" using ($1+1):($2-1):2 with labels font ",5" notitle
+set terminal postscript color
+set output "../LAT_CTX_results/graph/output_16k.ps"
+replot

@@ -1,0 +1,11 @@
+testcase: xfstests
+category: functional
+
+disk: 6HDD
+
+fs:
+- btrfs
+
+xfstests:
+  test:
+  - btrfs

@@ -1,0 +1,30 @@
+reset
+
+set macros
+style1 = "lt 4 lw 1 pt 1 lc 1"
+style2 = "lt 4 lw 1 pt 2 lc 2"
+style3 = "lt 4 lw 1 pt 3 lc 3"
+style4 = "lt 4 lw 1 pt 5 lc 4"
+style5 = "lt 4 lw 1 pt 7 lc 5"
+style6 = "lt 4 lw 1 pt 9 lc 6"
+style7 = "lt 4 lw 1 pt 13 lc 9"
+
+set autoscale
+set xlabel "Process number" font "Times-Italic,15"
+set ylabel "Time(microseconds)" font "Times-Italic,15"
+set xtics
+set ytics
+set mxtics 5
+set mytics 5
+set key box
+set mouse
+
+plot "../LAT_CTX_results/result_2k.txt" using 1:2 with linespoints title "Process size=2kb" @style2, \
+"../LAT_CTX_results/result_4k.txt" using 1:2 with linespoints title "Process size=4kb" @style3, \
+"../LAT_CTX_results/result_8k.txt" using 1:2 with linespoints title "Process size=8kb" @style4, \
+"../LAT_CTX_results/result_16k.txt" using 1:2 with linespoints title "Process size=16kb" @style5, \
+"../LAT_CTX_results/result_24k.txt" using 1:2 with linespoints title "Process size=24kb" @style6, \
+"../LAT_CTX_results/result_32k.txt" using 1:2 with linespoints title "Process size=32kb" @style7
+set terminal postscript color
+set output "../LAT_CTX_results/graph/output_all.ps"
+replot

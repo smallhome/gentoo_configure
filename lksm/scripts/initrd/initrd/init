@@ -1,0 +1,20 @@
+#!/bin/sh
+
+/bin/mount -t proc proc /proc
+/bin/mount -t sysfs sysfs /sys
+
+
+echo "Creating a few devices"
+mknod /dev/null c 1 3
+mknod /dev/tty c 5 0
+mdev -s
+
+echo "Setting up basic environment"
+busybox --install -s
+
+echo 'IP Configuration!'
+ifconfig eth0 192.168.0.101 up
+echo 'Mount nfs filesystem!'
+mount -t nfs -o port=2049,nolock,proto=tcp 192.168.0.25:/nfs nfs
+echo 'Enjoy your new system!'
+/bin/sh

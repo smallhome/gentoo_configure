@@ -1,0 +1,1 @@
+ARCH=arm arm-linux-gnueabi-gcc -O0 test_line.c -o test_line

@@ -1,0 +1,164 @@
+#!/bin/bash
+
+SELF=$0
+ALL_ARGS=$@
+
+set -e
+
+
+function check_rights {
+    ROOT_UID=0
+    if [ $UID != $ROOT_UID ]; then
+        echo "This script needs administrator privileges."
+        if [[ -t 1 ]]; then
+            sudo "$SELF" $ALL_ARGS
+        else
+            exec 1>output_file
+            gksu "$SELF" $ALL_ARGS
+        fi
+        exit
+    fi
+}
+
+set -x 
+check_rights
+
+# prepare the chroot enviroment
+if [ -z "$1" ]; then
+    mount latest.img root
+else
+    mount latest.img root-ro
+    mount -t aufs -o br="$1":root-ro none root
+fi
+mount --bind /dev/ root/dev
+
+# prepare fake_grub_probe 
+(
+cat<<EOF
+#!/bin/bash
+
+optspec=":-:"
+
+while getopts "\$optspec" optchar; do
+    case "\${optchar}" in 
+        -) 
+            case \${OPTARG} in
+                target)
+                    val = "\${!OPTIND}"; OPTIND=\$(( $OPTIND + 1 ))
+                    echo "parsing option: '--\${OPTARG}', value: '\${val}'" >&2
+                    ;;
+                target=*)
+                    val=\${OPTARG#*=}
+                    opt=\${OPTARG%=$val}
+                    echo "Parsing option: '--\${opt}', value: '\${val}'" >&2
+                    if [ "\${val}" == "device" ]; then
+                        echo "/dev/sda1"
+                        exit 0
+                    elif [ "\${val}" == "fs" ]; then
+                        echo "linux-mint"
+                        exit 0
+                    fi
+                    ;;
+                device)
+                    val="\${!OPTIND}"; OPTIND=\$(( $OPTIND + 1 ))
+                    echo "parsing option '--\${OPTARG}', value: '\${val}'" >&2
+                    ;;
+                device=*)
+                    val=\${OPTARG#*=}
+                    opt=\${OPTARG%=\$val}
+                    echo "Parsing option: '--\${opt}', value: '\${val}'" >&2
+                    ;;
+
+                *)
+                    echo "unknown option --\${OPTARG}" >&2
+            esac;;
+        *)
+            echo "non-option argument: '-\${OPTARG}'" >&2
+            ;;
+    esac
+done
+exit 255
+EOF
+) > root/fake_grub_probe
+chmod +x root/fake_grub_probe
+
+# prepare startup script for chroot
+(
+cat<<EOF
+#!/bin/bash -x
+
+declare -a PROG_LIST=("/sbin/initctl" "/usr/sbin/invoke-rc.d" "/usr/sbin/grub-probe")
+
+function divert_programs() {
+    for prog in "\${PROG_LIST[@]}"; do
+        dpkg-divert --local --rename --add "\${prog}"
+        ln -s /bin/true "\${prog}"
+    done
+}
+
+function undivert_programs() {
+    for prog in "\${PROG_LIST[@]}"; do
+        rm "\${prog}"
+        dpkg-divert --rename --remove "\${prog}"
+    done
+}
+
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devpts none /dev/pts
+
+export HOME=/root
+export LC_ALL=C
+
+# prepare for customization (running apt-get, for example)
+dbus-uuidgen > /var/lib/dbus/machine-id
+
+divert_programs
+
+# use fake_grub_probe instead of diverted symlink to /bin/true
+rm /usr/sbin/grub-probe
+ln -s /root/fake_grub_probe /usr/sbin/grub-probe
+
+cd /root 
+/bin/bash -i
+
+# clean up
+# !!!! warning !!!!
+# the user is expected to call oem-config-prepare before exiting bash above.
+# !!!!!!!!!!!!!!!!!
+
+# don't do 'apt-get clean' as we may want to leave cached packages in
+# don't do 'rm -rf /var/cache/apt/archives/*' for same reason above
+rm -rf /tmp/* ~/.bash_history
+rm /var/lib/dbus/machine-id
+
+undivert_programs
+
+umount /proc
+mount | grep /proc > /dev/null
+if [ $? -ne 0 ]; then
+    umount -lf /proc
+fi
+umount /sys
+umount /dev/pts
+EOF
+) > root/tmp/startup.sh
+chmod +x root/tmp/startup.sh
+
+# chroot
+chroot root /tmp/startup.sh
+
+umount root/dev
+umount root
+
+mount | grep root-ro > /dev/null
+if [ $? -eq 0 ]; then
+    umount root-ro
+fi
+mount | grep root-ro > /dev/null
+if [ $? -eq 0 ]; then
+    umount -lf root-ro
+fi
+
+exit 0
+

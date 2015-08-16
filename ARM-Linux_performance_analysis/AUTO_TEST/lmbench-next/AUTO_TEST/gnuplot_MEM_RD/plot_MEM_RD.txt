@@ -1,0 +1,27 @@
+reset
+
+set logscale x 2  
+set xlabel "Size(MB)"
+set ylabel "Time(nanoseconds/load)"
+set format x "%2.4f
+set mxtics 10
+set mytics 10
+#set arrow from 0.032,20 to  0.032,5  filled size 0.5
+#set label 1 "32KB" at 0.025,25
+#set arrow from 0.125,40 to  0.125,25  filled size 0.5
+#set label 2 "125KB" at 0.085,45
+set key box
+set grid lw 3
+set key left
+#plot "../LAT_MEM_RD_results/16" using ($1):($2+0.5):1 with labels notitle,"../LAT_MEM_RD_results/16" using 1:2 with linespoints title "./lat-mem-rd 1M" lt 3 pt 7
+plot "./LAT_MEM_RD_results/16.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 16" lt 3 pt 7,\
+"./LAT_MEM_RD_results/32.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 32" lt 4 pt 2,\
+"./LAT_MEM_RD_results/64.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 64" lt 5 pt 3,\
+"./LAT_MEM_RD_results/128.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 128" lt 6 pt 4,\
+"./LAT_MEM_RD_results/256.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 256" lt 7 pt 5,\
+"./LAT_MEM_RD_results/512.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 512" lt 8 pt 6,\
+"./LAT_MEM_RD_results/1024.txt" using 1:2 with linespoints title "./lat-mem-rd 1M 1024" lt 9 pt 8
+#set terminal postscript color
+set terminal png size 800,600
+set output "./LAT_MEM_RD_results/LAT_MEM_RD.png"
+replot

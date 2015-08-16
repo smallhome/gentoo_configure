@@ -1,0 +1,12 @@
+#!/bin/sh
+
+MACHINE=`uname -m | sed -e 's/ //g' | sed -e 's?/?-?g'`
+SYSTEM=`uname -s | tr '[A-Z]' '[a-z]' | sed -e 's/ //g' | sed -e 's?/?-?g'`
+OS="${MACHINE}-${SYSTEM}"
+
+if [ X"$ARCH" != X ]
+then
+	OS="$ARCH"
+fi
+
+echo $OS

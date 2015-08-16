@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Fixed Parameters
+bs=4096
+refresh=500
+
+# Parse command-line arguments
+if [ "$1x" = "x" ]; then
+    echo Usage: $0 device-path
+    echo
+    echo "  device-path  The path to the block device file, e.g.:"
+    echo "    /dev/sda on Linux and Cygwin,"
+    echo "    /dev/rdisk0 on Darwin (MacOS X),"
+    echo "    /dev/rdsk/c0t0d0s2, /dev/md/rdsk/d40, /dev/zvol/rdsk/... on Solaris."
+    exit 1
+fi
+d=$1
+
+# Get device size in blocks of size bs
+function get_dev_size_bytes {
+  local dev=$1
+
+  local os=`uname -s`
+  if [ $os == 'Linux' ]; then
+    # e.g. /dev/sda, /dev/sdb
+    fdisk -l | grep "^Disk $dev" | awk '{ print $5 }'
+  elif [ $os == 'SunOS' ]; then
+    # e.g. /dev/rdsk/c0t0d0s0, /dev/md/rdsk/d40
+    # prtvtoc will not work if the disk has no partition table...
+    #local sectors=`prtvtoc -h $dev 2>/dev/null | awk '/^ *[02]/ { print $5 }' | tail -1`
+    # Get Nblocks property from device driver using prtconf - the most reliable method for Solaris
+    local dev_escaped=${dev//\//\\/} # escape forward slashes (/) for use in awk /-delimited regex pattern
+    sectors_hex=`prtconf -v $dev | awk "/dev_link=$dev_escaped/ { found=1 } found==1 && /name='Nblocks'/ { FS=\\"=\\"; getline; print \\$2; exit }"`
+    if [ -z "$sectors" ]; then
+      # zvols might required special treatment (no dev_link property sometimes)
+      local dev_zvol=${dev#/dev/zvol/rdsk/}
+      local dev_zvol_esc=${dev_zvol//\//\\/}
+      sectors_hex=`prtconf -v $dev | awk "/name='Nblocks'/ { FS=\\"=\\"; getline; Nblocks=\\$2 } /value='$dev_zvol_esc'/ { print Nblocks; exit }"`
+    fi
+    sectors=$((0x$sectors_hex)) # unhex the value
+    [ -n "$sectors" ] && echo $[$sectors * 512]
+  elif [ $os == "Darwin" ]; then
+    # e.g. /dev/disk0, /dev/disk1 etc
+    local sectors=`fdisk $dev | awk '/^Disk: / { print substr($5, 2) }'`
+    [ -n "$sectors" ] && echo $[$sectors * 512]
+  elif [[ $os == CYGWIN_NT* ]]; then
+    # e.g. /dev/sda, /dev/sdb etc
+    local dev_base=`basename $dev`
+    local blocks=`awk "/$dev_base\$/ {print \\$3}" /proc/partitions`
+    [ -n "$blocks" ] && echo $[$blocks * 1024]
+  fi
+}
+bytes=`get_dev_size_bytes $d`
+if [ -z "$bytes" ]; then
+  echo Device $d not found.
+  exit 1
+fi
+blocks=$[$bytes / $bs]
+
+# Expose gettimeofday
+READER=`dirname $0`/randread.`uname -s`-`uname -p`
+
+# Run I/O test
+echo "Running random read test on $d ($[$bytes/1024/1024/1024]GB), $blocks blocks of size $bs bytes."
+while [ 1 ]; do
+    iops=`$READER $d $bs $blocks $refresh`
+    status=$?
+    [ $status -ne 0 ] && echo "(error $status) $iops" && exit $status
+    echo IOPS: $iops
+    [ "$iops" != "0" ] && refresh=`echo "$iops*3/1" | bc`
+done
+

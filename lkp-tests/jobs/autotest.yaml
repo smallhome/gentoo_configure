@@ -1,0 +1,119 @@
+testcase: autotest
+category: benchmark
+
+rootfs: debian-x86_64.cgz
+
+autotest:
+  test:
+  - compilebench
+  - docker
+  - iosched_bugs
+  - isic
+  - monotonic_time
+  - pi_tests
+  - systemtap
+  - unixbench
+
+---
+category: functional
+
+autotest:
+  test:
+  # - aborttest
+  - aio_dio_bugs
+  - aiostress
+  # - asynctest # run time too short
+  # - autotest_regression
+  # - barriertest  # autotest self test
+  - bash_shared_mapping
+  - bonnie
+  # NameError: invalid file /lkp/benchmarks/autotest/client/tests/btreplay/blktrace-git-latest.tar.gz to cat to command tar xvf - 2>/dev/null
+  # - btreplay
+  - cgroup
+  - cgroup_tests
+  - connectathon
+  - cpuflags
+  - cpu_hotplug
+  - ctcs
+  - cyclictest
+  - dacapo
+  # - dbench
+  - dbt2
+  - disktest
+  - dma_memtest
+  # - ebizzy
+  # - error_cleanup
+  # - error_initialize
+  # - error_setup
+  # - error_skip_step
+  # - error_test_bug
+  # - error_test_error
+  #- error_test_fail
+  #- error_test_na
+  - ffsb
+  # - fio
+  - flail
+  - fsdev
+  - fsfuzzer
+  # - fs_mark
+  - fsstress
+  - fsx
+  # - hackbench
+  # - hwclock
+  - interbench
+  # - iozone
+  # - iperf
+  - ipv6connect
+  # - kernbench
+  # - kernelbuild
+  # - kernelinstall
+  - libhugetlbfs
+  # - libvirt_tck
+  # - libvirt_test_api
+  - linus_stress
+  - linux-tools/crontab
+  - linux-tools/pax
+  - lmbench
+  # - ltp
+  - lvsetup
+  - memory_api
+  # - netperf2
+  # - netpipe
+  - npb
+  # - parallel_dd
+  # build error
+  # - perfmon
+  - pktgen
+  - posixtest
+  # - profiler_sync # Not a test case
+  - profiler_test
+  - qemu_iotests
+  - reaim
+  - real_time_tests
+  # - regression
+  - rmaptest
+  - rtc
+  - rttester
+  - scrashme
+  - scsi_testsuite
+  # - selftest
+  - signaltest
+  # - sleeptest
+  # - smatch
+  # - sparse
+  - spew
+  # stress: FAIL: [2957] (238) invalid hdd byte value: 0
+  # - stress
+  - synctest
+  # - sysbench
+  # - tbench
+  - tiobench
+  # Permission denied: '/sys/kernel/debug/tracing/tracing_enabled'
+  # - tracing_microbenchmark
+  - tsc
+  # - unixbench5
+  # - uptime
+  # - virt
+  - wb_kupdate
+  # - xfstests
+  - xmtest

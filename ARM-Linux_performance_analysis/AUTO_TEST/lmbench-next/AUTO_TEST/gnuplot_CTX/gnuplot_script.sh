@@ -1,0 +1,15 @@
+mkdir -p ../LAT_CTX_results/graph
+gnuplot -e "load 'plot_2k.txt'"
+gnuplot -e "load 'plot_4k.txt'"
+gnuplot -e "load 'plot_8k.txt'"
+gnuplot -e "load 'plot_16k.txt'"
+gnuplot -e "load 'plot_24k.txt'"
+gnuplot -e "load 'plot_32k.txt'"
+gnuplot -e "load 'plot_all.txt'"
+
+gnuplot -e "load 'plot_2k_h.sh'"
+gnuplot -e "load 'plot_4k_h.sh'"
+gnuplot -e "load 'plot_8k_h.sh'"
+gnuplot -e "load 'plot_16k_h.sh'"
+gnuplot -e "load 'plot_24k_h.sh'"
+gnuplot -e "load 'plot_32k_h.sh'"

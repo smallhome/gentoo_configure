@@ -1,0 +1,1 @@
+~/gitkesl/manycore_internal/utils/qemu/x86_64-softmmu/qemu-system-x86_64 -localtime -net user -net nic -redir tcp:10022::22 -m 14G -hda ubuntu.img -hdb ubuntu_disk.img -boot d -cpu host -smp 8  -enable-kvm

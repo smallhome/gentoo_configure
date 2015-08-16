@@ -1,0 +1,9 @@
+#!/bin/bash 
+
+TARGET=`readlink -f latest.img`
+DEST="linux-image.xz"
+OPT="-c5"
+echo "compressing $TARGET"
+echo "to $DEST"
+pv "$TARGET" | xz $OPT > "$DEST" 
+

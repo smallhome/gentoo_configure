@@ -1,0 +1,19 @@
+reset
+set out
+
+set autoscale
+set xlabel "Number of times" font "Times-Italic,15"
+set ylabel "Time(microseconds)" font "Times-Italic,15"
+set xtics
+set ytics
+set mxtics 5
+set mytics 5
+set key box center
+set mouse
+plot "../LAT_SYSCALL_results/getppid_log.txt" using 3 with linespoints title "lat syscall getppid" lt 4 lw 0 pt 1 lc 1,\
+"../LAT_SYSCALL_results/open_log.txt" using 3 with linespoints title "lat syscall open" lt 4 lw 0 pt 2 lc 2,\
+"../LAT_SYSCALL_results/read_log.txt" using 3 with linespoints title "lat syscall read" lt 4 lw 0 pt 3 lc 3,\
+"../LAT_SYSCALL_results/write_log.txt" using 3 with linespoints title "lat syscall write" lt 4 lw 0 pt 4 lc 4
+set terminal postscript color
+set output "../LAT_SYSCALL_results/lat_SYSCALL.ps"
+replot

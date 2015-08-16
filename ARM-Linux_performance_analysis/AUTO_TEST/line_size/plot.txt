@@ -1,0 +1,17 @@
+reset
+
+set out
+
+set autoscale
+set xlabel "Kth INT" font "Times-Italic,15"
+set ylabel "Time(microseconds)" font "Times-Italic,15"
+set xtics
+set ytics
+set mxtics 5
+set mytics 5
+set key box
+set mouse
+plot "./LINE_SIZE_results/results.txt" using 1:2 with linespoints title "every Kth INT" lt 4 lw 1 pt 3 lc 3
+set terminal postscript color
+set output "./LINE_SIZE_results/LINE_SIZE_result.ps"
+replot

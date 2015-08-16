@@ -1,0 +1,143 @@
+#!/usr/bin/env python
+#    Takes in ftrace dump and generates a process graph.
+#    Copyright (C) 2011 Jarkko Sakkinen <jarkko.sakkinen@iki.fi>
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc.,
+#    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+from sets import Set
+import sys
+import pygraphviz as gv
+import re
+from optparse import OptionParser
+
+class Process:
+    def __init__(self, pid, parent_pid):
+        self.pid = pid
+        self.parent_pid = parent_pid
+        self.child_pids = Set([])
+        self.commands = []
+
+    def add_child_pid(self, child_pid):
+        self.child_pids.add(child_pid)
+
+    def add_command(self, command):
+        self.commands.append(command)
+
+procs = {}
+
+if __name__ == "__main__":
+    parser = OptionParser()
+    parser.add_option("-p", "--pid", dest="pid",
+                      help="root PID", metavar="PID")
+    (options, args) = parser.parse_args()
+
+    root_pid = options.pid
+    if root_pid == None:
+        root_pid_found = True
+    else:
+        root_pid_found = False
+
+    for line in sys.stdin:
+        columns = line.split()
+        # Skip non-event lines
+        if len(columns) < 5:
+            continue
+
+        event_name = columns[3]
+
+        if event_name == "sched_process_fork:":
+            parent_pid = None
+            parent_comm = None
+            child_pid = None
+            child_comm = None
+
+            for attr in columns[4:]:
+                (prop, val) = attr.split('=', 1)
+                if prop == "parent_pid":
+                    parent_pid = val
+                elif prop == "parent_comm":
+                    parent_comm = val
+                elif prop == "child_pid":
+                    child_pid = val
+                elif prop == "child_comm":
+                    child_comm = val
+
+            if parent_pid == None or parent_comm == None or \
+               child_pid == None or child_comm == None or \
+               child_pid in procs:
+                print >> sys.stderr, "ERROR: " + line
+                sys.exit(1)
+
+            if not root_pid_found:
+                if root_pid == parent_pid:
+                    root_pid_found = True
+                else:
+                    continue
+
+            parent_proc = None
+            if parent_pid in procs:
+                parent_proc = procs[parent_pid]
+                # This handles execve().
+                if parent_comm != parent_proc.commands[-1]:
+                    parent_proc.add_command(parent_comm)
+                parent_proc.add_child_pid(child_pid)
+            elif root_pid == None or root_pid == parent_pid:
+                parent_proc = Process(parent_pid, None)
+                parent_proc.add_child_pid(child_pid)
+                parent_proc.add_command(parent_comm)
+                procs[parent_pid] = parent_proc
+
+            if parent_pid in procs:
+                child_proc = Process(child_pid, parent_pid)
+                child_proc.add_command(child_comm)
+                procs[child_pid] = child_proc
+        elif event_name == "sched_process_exit:":
+            pid = None
+
+            for attr in columns[4:]:
+                (prop, val) = attr.split('=', 1)
+                if prop == "pid":
+                    pid = val
+
+            if pid == None:
+                print >> sys.stderr, "ERROR: " + line
+                sys.exit(1)
+
+            if pid in procs:
+                child_proc = procs[pid]
+                parent_pid = child_proc.parent_pid
+
+                if parent_pid in procs:
+                    parent_proc = procs[parent_pid]
+                    parent_proc.child_pids.remove(pid)
+                    # Reparent grandchildren.
+                    for grandchild_pid in child_proc.child_pids:
+                        parent_proc.add_child_pid(grandchild_pid)
+                        grandchild = procs[grandchild_pid]
+                        grandchild.parent_pid = parent_pid
+                del procs[pid]
+                print >> sys.stderr, "INFO: removed " + pid
+
+    graph = gv.AGraph(directed='true', overlap='false')
+    graph.node_attr['shape'] = 'box'
+
+    for proc in procs.values():
+        for child_pid in proc.child_pids:
+            child = procs[child_pid]
+            graph.add_edge(proc.pid + ": " + ', '.join(proc.commands), \
+                           child.pid + ": " + ', '.join(child.commands))
+
+    graph.write(sys.stdout)
+

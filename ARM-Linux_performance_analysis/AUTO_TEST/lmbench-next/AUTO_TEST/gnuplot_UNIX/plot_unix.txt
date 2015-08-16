@@ -1,0 +1,15 @@
+reset
+
+set autoscale
+set xlabel "Message Size(byte)" font "Times-Italic,15"
+set ylabel "Time(microseconds)" font "Times-Italic,15"
+set xtics
+set ytics
+set mxtics 5
+set mytics 5
+set key box
+set mouse
+plot "../LAT_UNIX_results/results.txt" using :5 with linespoints title "lat_UNIX" lt 4 lw 1 pt 7 lc 5
+set terminal postscript color
+set output "../LAT_UNIX_results/lat_UNIX.ps"
+replot

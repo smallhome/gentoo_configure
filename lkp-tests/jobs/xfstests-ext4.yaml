@@ -1,0 +1,11 @@
+testcase: xfstests
+category: functional
+
+disk: 4HDD
+
+fs:
+- ext4
+
+xfstests:
+  test:
+  - ext4
